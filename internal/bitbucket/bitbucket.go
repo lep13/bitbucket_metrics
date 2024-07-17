@@ -1,7 +1,7 @@
 package bitbucket
 
 import (
-    "bitbucket_metrics/internal/database"
+    "github.com/lep13/bitbucket_metrics/internal/database"
     "context"
     "encoding/base64"
     "log"
@@ -94,7 +94,7 @@ func FetchAndSaveCommits(username, appPassword string) error {
                     ProjectName:   string(project.Name),
                 }
 
-                collection := db.GetCollection()
+                collection := database.GetCollection()
                 _, err := collection.UpdateOne(
                     context.Background(),
                     bson.M{"commit_id": newCommit.CommitID},
