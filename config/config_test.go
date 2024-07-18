@@ -51,8 +51,7 @@ func TestLoadConfig_Success(t *testing.T) {
 	config, err := LoadConfig()
 	assert.NoError(t, err)
 	assert.NotNil(t, config)
-	assert.Equal(t, "mock_username", config.BitbucketUsername)
-	assert.Equal(t, "mock_password", config.BitbucketAppPassword)
+	assert.Equal(t, "mock_token", config.BitbucketAccessToken)
 	assert.Equal(t, "mock_uri", config.MongoDBURI)
 	assert.Equal(t, "mock_region", config.Region)
 }
