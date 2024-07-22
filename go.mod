@@ -6,7 +6,6 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.30.3
 	github.com/aws/aws-sdk-go-v2/config v1.27.26
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.32.3
-	github.com/shurcooL/graphql v0.0.0-20230722043721-ed46e5a46466
 	github.com/stretchr/testify v1.9.0
 	go.mongodb.org/mongo-driver v1.16.0
 )

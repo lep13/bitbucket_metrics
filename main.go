@@ -5,7 +5,7 @@ import (
 
 	"github.com/lep13/bitbucket_metrics/config"
 	"github.com/lep13/bitbucket_metrics/internal/bitbucket"
-	"github.com/lep13/bitbucket_metrics/internal/database"
+	db "github.com/lep13/bitbucket_metrics/internal/database"
 )
 
 func main() {

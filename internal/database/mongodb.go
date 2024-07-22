@@ -59,7 +59,7 @@ type CollectionInterface interface {
 
 // defaultGetCollection returns the default collection.
 func defaultGetCollection() CollectionInterface {
-    return MongoClient.Database("metrics").Collection("bitbucket_metrics")
+    return MongoClient.Database("bitbucket_metrics").Collection("metrics")
 }
 
 // GetCollection returns a collection from the MongoDB database.
