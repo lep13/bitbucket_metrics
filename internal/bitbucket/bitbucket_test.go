@@ -3,11 +3,8 @@ package bitbucket
 import (
 	"context"
 	"errors"
-	// "fmt"
 	"io"
 	"net/http"
-	// "os"
-	// "os/exec"
 	"strings"
 	"testing"
 
@@ -473,4 +470,133 @@ func TestFetchCommitDetails_FailedToFetchDiffstat(t *testing.T) {
 // 	}
 
 // 	t.Fatalf("process ran with err %v, want exit status 1", err)
+// }
+
+// TestFetchRepositories_HTTPError simulates an HTTP error when fetching repositories.
+func TestFetchRepositories_HTTPError(t *testing.T) {
+	mockClient := new(MockHTTPClient)
+	mockClient.On("Do", mock.Anything).Return(nil, errors.New("HTTP error"))
+
+	// Inject the mock client directly
+	oldHTTPClient := httpClient
+	httpClient = mockClient
+	defer func() { httpClient = oldHTTPClient }()
+
+	repos, err := fetchRepositories("fake_token")
+	assert.Error(t, err)
+	assert.Nil(t, repos)
+	assert.Contains(t, err.Error(), "HTTP error")
+
+	mockClient.AssertExpectations(t)
+}
+
+// TestFetchCommits_HTTPError simulates an HTTP error when fetching commits.
+func TestFetchCommits_HTTPError(t *testing.T) {
+	mockClient := new(MockHTTPClient)
+	mockClient.On("Do", mock.Anything).Return(nil, errors.New("HTTP error"))
+
+	// Inject the mock client directly
+	oldHTTPClient := httpClient
+	httpClient = mockClient
+	defer func() { httpClient = oldHTTPClient }()
+
+	commits, err := fetchCommits("fake_token", "repo1")
+	assert.Error(t, err)
+	assert.Nil(t, commits)
+	assert.Contains(t, err.Error(), "HTTP error")
+
+	mockClient.AssertExpectations(t)
+}
+
+// TestFetchCommitDetails_HTTPError simulates an HTTP error when fetching commit details.
+func TestFetchCommitDetails_HTTPError(t *testing.T) {
+	mockClient := new(MockHTTPClient)
+	mockClient.On("Do", mock.Anything).Return(nil, errors.New("HTTP error"))
+
+	// Inject the mock client directly
+	oldHTTPClient := httpClient
+	httpClient = mockClient
+	defer func() { httpClient = oldHTTPClient }()
+
+	commitDetails, err := fetchCommitDetails("fake_token", "repo1", "commit1")
+	assert.Error(t, err)
+	assert.Empty(t, commitDetails)
+	assert.Contains(t, err.Error(), "HTTP error")
+
+	mockClient.AssertExpectations(t)
+}
+
+// TestFetchAndSaveCommits_RepoFetchError simulates an error while fetching repositories.
+func TestFetchAndSaveCommits_RepoFetchError(t *testing.T) {
+	mockClient := new(MockHTTPClient)
+	mockClient.On("Do", mock.Anything).Return(nil, errors.New("HTTP error"))
+
+	// Inject the mock client directly
+	oldHTTPClient := httpClient
+	httpClient = mockClient
+	defer func() { httpClient = oldHTTPClient }()
+
+	err := FetchAndSaveCommits("fake_token")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to fetch repositories")
+
+	mockClient.AssertExpectations(t)
+}
+
+// // TestFetchCommitDetails_InvalidJSON simulates invalid JSON response for commit details.
+func TestFetchCommitDetails_InvalidJSON(t *testing.T) {
+	mockClient := new(MockHTTPClient)
+
+	mockClient.On("Do", mock.Anything).Return(&http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{`)), // Invalid JSON
+	}, nil).Once()
+
+	// Inject the mock client directly
+	oldHTTPClient := httpClient
+	httpClient = mockClient
+	defer func() { httpClient = oldHTTPClient }()
+
+	_, err := fetchCommitDetails("fake_token", "repo1", "commit1")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected") // Check for a part of the error message
+
+	mockClient.AssertExpectations(t)
+}
+
+
+// TestFetchAndSaveCommits_CommitFetchError simulates an error while fetching commits.
+// func TestFetchAndSaveCommits_CommitFetchError(t *testing.T) {
+// 	mockClient := new(MockHTTPClient)
+
+// 	// Mock the response for fetching repositories
+// 	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+// 		return strings.Contains(req.URL.String(), "repositories")
+// 	})).Return(&http.Response{
+// 		StatusCode: http.StatusOK,
+// 		Body: io.NopCloser(strings.NewReader(`{
+// 			"values": [
+// 				{"name": "repo1", "slug": "repo1", "project": {"name": "Project1"}}
+// 			]
+// 		}`)),
+// 	}, nil).Once()
+
+// 	// Mock an error response for fetching commits
+// 	mockClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+// 		return strings.Contains(req.URL.String(), "repo1/commits")
+// 	})).Return(nil, errors.New("HTTP error")).Once()
+
+// 	// Inject the mock client directly
+// 	oldHTTPClient := httpClient
+// 	httpClient = mockClient
+// 	defer func() { httpClient = oldHTTPClient }()
+
+// 	// Call the function to test
+// 	err := FetchAndSaveCommits("fake_token")
+
+// 	// Check for the presence of an error
+// 	assert.Error(t, err, "Expected an error due to failed commit fetch, but got nil")
+
+// 	// Assert that the expectations were met
+// 	mockClient.AssertExpectations(t)
 // }

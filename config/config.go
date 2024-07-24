@@ -17,7 +17,7 @@ type SecretsManagerInterface interface {
 
 // SecretManagerFunc allows for injecting a custom Secrets Manager function for testing.
 var SecretManagerFunc = func() (SecretsManagerInterface, error) {
-	cfg, err := loadAWSConfig(context.TODO())
+	cfg, err := loadAWSConfig(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func LoadConfig() (*Config, error) {
 		SecretId: aws.String(secretName),
 	}
 
-	result, err := svc.GetSecretValue(context.TODO(), input)
+	result, err := svc.GetSecretValue(context.Background(), input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve secret: %w", err)
 	}

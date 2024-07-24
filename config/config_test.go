@@ -24,38 +24,6 @@ func mockLoadAWSConfig(ctx context.Context, optFns ...func(*config.LoadOptions) 
 	return aws.Config{Region: "us-east-1"}, nil
 }
 
-// func TestLoadConfig_Success(t *testing.T) {
-// 	// Mock the AWS configuration loading function
-// 	originalLoadAWSConfig := loadAWSConfig
-// 	defer func() { loadAWSConfig = originalLoadAWSConfig }()
-
-// 	loadAWSConfig = mockLoadAWSConfig
-
-// 	// Mock Secrets Manager
-// 	mockSM := &MockSecretsManager{
-// 		GetSecretValueFunc: func(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
-// 			secretString := `{"github_token":"mock_token","mongodb_uri":"mock_uri","region":"mock_region"}`
-// 			return &secretsmanager.GetSecretValueOutput{
-// 				SecretString: aws.String(secretString),
-// 			}, nil
-// 		},
-// 	}
-
-// 	// Override SecretManagerFunc to return the mock Secrets Manager
-// 	originalSecretManagerFunc := SecretManagerFunc
-// 	defer func() { SecretManagerFunc = originalSecretManagerFunc }()
-// 	SecretManagerFunc = func() (SecretsManagerInterface, error) {
-// 		return mockSM, nil
-// 	}
-
-// 	config, err := LoadConfig()
-// 	assert.NoError(t, err)
-// 	assert.NotNil(t, config)
-// 	assert.Equal(t, "mock_token", config.BitbucketAccessToken)
-// 	assert.Equal(t, "mock_uri", config.MongoDBURI)
-// 	assert.Equal(t, "mock_region", config.Region)
-// }
-
 func TestLoadConfig_SecretsManagerError(t *testing.T) {
 	// Mock the AWS configuration loading function
 	originalLoadAWSConfig := loadAWSConfig
@@ -163,4 +131,48 @@ func TestSecretManagerFunc(t *testing.T) {
 		assert.Nil(t, svc)
 		assert.Contains(t, err.Error(), "failed to load AWS config")
 	})
+}
+
+func TestLoadConfig_Success(t *testing.T) {
+	// Mock the AWS configuration loading function to simulate success
+	originalLoadAWSConfig := loadAWSConfig
+	defer func() { loadAWSConfig = originalLoadAWSConfig }()
+
+	loadAWSConfig = mockLoadAWSConfig
+
+	// Mock Secrets Manager to return valid JSON
+	mockSM := &MockSecretsManager{
+		GetSecretValueFunc: func(ctx context.Context, params *secretsmanager.GetSecretValueInput, optFns ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+			secretString := `{
+				"bitbucket_access_token": "test_token",
+				"mongodb_uri": "mongodb://test_uri",
+				"region": "us-east-1",
+				"repo_url_template": "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}",
+				"commits_url_template": "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}/commits",
+				"commit_url_template": "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}/commit/{commit_hash}",
+				"diffstat_url_template": "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}/diffstat/{commit_hash}"
+			}`
+			return &secretsmanager.GetSecretValueOutput{
+				SecretString: aws.String(secretString),
+			}, nil
+		},
+	}
+
+	// Override SecretManagerFunc to return the mock Secrets Manager
+	originalSecretManagerFunc := SecretManagerFunc
+	defer func() { SecretManagerFunc = originalSecretManagerFunc }()
+	SecretManagerFunc = func() (SecretsManagerInterface, error) {
+		return mockSM, nil
+	}
+
+	config, err := LoadConfig()
+	assert.NoError(t, err)
+	assert.NotNil(t, config)
+	assert.Equal(t, "test_token", config.BitbucketAccessToken)
+	assert.Equal(t, "mongodb://test_uri", config.MongoDBURI)
+	assert.Equal(t, "us-east-1", config.Region)
+	assert.Equal(t, "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}", config.RepoURLTemplate)
+	assert.Equal(t, "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}/commits", config.CommitsURLTemplate)
+	assert.Equal(t, "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}/commit/{commit_hash}", config.CommitURLTemplate)
+	assert.Equal(t, "https://bitbucket.org/api/2.0/repositories/{username}/{repo_slug}/diffstat/{commit_hash}", config.DiffstatURLTemplate)
 }
