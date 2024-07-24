@@ -8,11 +8,30 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/lep13/bitbucket_metrics/internal/bitbucket/models"
+	"github.com/lep13/bitbucket_metrics/config"
 	db "github.com/lep13/bitbucket_metrics/internal/database"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+var cfg *config.Config
+
+// HTTPClient defines the methods that our client should implement
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+var httpClient HTTPClient = &http.Client{}
+
+var loadConfigFunc = config.LoadConfig
+
+func init() {
+	var err error
+	cfg, err = config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+}
 
 func FetchAndSaveCommits(accessToken string) error {
 	repos, err := fetchRepositories(accessToken)
@@ -30,25 +49,39 @@ func FetchAndSaveCommits(accessToken string) error {
 
 		for _, commit := range commits {
 			log.Printf("Processing commit: %s", commit.Hash)
-			reviewedBy := ""
-			if commit.ReviewedBy.User.DisplayName != "" {
-				reviewedBy = commit.ReviewedBy.User.DisplayName
+			detailedCommit, err := fetchCommitDetails(accessToken, repo.Slug, commit.Hash)
+			if err != nil {
+				log.Printf("Failed to fetch detailed commit info for %s: %v", commit.Hash, err)
+				continue
 			}
-			pullRequestID := ""
-			if commit.PullRequest.ID != "" {
-				pullRequestID = commit.PullRequest.ID
+
+			filesAdded, filesDeleted, filesUpdated := 0, 0, 0
+
+			for _, file := range detailedCommit.Files {
+				switch file.Type {
+				case "added":
+					filesAdded++
+				case "removed":
+					filesDeleted++
+				case "modified":
+					filesUpdated++
+				}
 			}
-			newCommit := models.Commit{
+
+			newCommit := Commit{
 				ProjectName:   repo.Project.Name,
 				RepoName:      repo.Name,
-				CommitMessage: commit.Message,
-				CommitID:      commit.Hash,
-				CommittedBy:   commit.Author.User.DisplayName,
-				LinesAdded:    commit.Summary.LinesAdded,
-				LinesDeleted:  commit.Summary.LinesDeleted,
-				CommitDate:    commit.Date,
-				ReviewedBy:    reviewedBy,
-				PullRequestID: pullRequestID,
+				CommitMessage: detailedCommit.Message,
+				CommitID:      detailedCommit.Hash,
+				CommittedBy:   detailedCommit.Author.User.DisplayName,
+				LinesAdded:    detailedCommit.Summary.LinesAdded,
+				LinesDeleted:  detailedCommit.Summary.LinesDeleted,
+				CommitDate:    detailedCommit.Date,
+				FilesAdded:    filesAdded,
+				FilesDeleted:  filesDeleted,
+				FilesUpdated:  filesUpdated,
+				ReviewedBy:    detailedCommit.ReviewedBy.User.DisplayName,
+				PullRequestID: detailedCommit.PullRequest.ID,
 			}
 
 			log.Printf("Upserting commit: %+v", newCommit)
@@ -73,13 +106,12 @@ func FetchAndSaveCommits(accessToken string) error {
 	return nil
 }
 
-func fetchRepositories(accessToken string) ([]models.Repository, error) {
-	url := "https://api.bitbucket.org/2.0/repositories/lep13"
+func fetchRepositories(accessToken string) ([]Repository, error) {
+	url := fmt.Sprintf(cfg.RepoURLTemplate, "lep13")
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +123,7 @@ func fetchRepositories(accessToken string) ([]models.Repository, error) {
 	}
 
 	var result struct {
-		Values []models.Repository `json:"values"`
+		Values []Repository `json:"values"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
@@ -101,13 +133,12 @@ func fetchRepositories(accessToken string) ([]models.Repository, error) {
 	return result.Values, nil
 }
 
-func fetchCommits(accessToken, repoSlug string) ([]models.CommitDetails, error) {
-	url := fmt.Sprintf("https://api.bitbucket.org/2.0/repositories/lep13/%s/commits", repoSlug)
+func fetchCommits(accessToken, repoSlug string) ([]CommitDetails, error) {
+	url := fmt.Sprintf(cfg.CommitsURLTemplate, "lep13", repoSlug)
 	req, _ := http.NewRequest("GET", url, nil)
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +150,7 @@ func fetchCommits(accessToken, repoSlug string) ([]models.CommitDetails, error) 
 	}
 
 	var result struct {
-		Values []models.CommitDetails `json:"values"`
+		Values []CommitDetails `json:"values"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
@@ -127,4 +158,65 @@ func fetchCommits(accessToken, repoSlug string) ([]models.CommitDetails, error) 
 
 	log.Printf("Fetched %d commits for repository %s", len(result.Values), repoSlug)
 	return result.Values, nil
+}
+
+func fetchCommitDetails(accessToken, repoSlug, commitHash string) (CommitDetails, error) {
+	commitURL := fmt.Sprintf(cfg.CommitURLTemplate, "lep13", repoSlug, commitHash)
+	commitReq, _ := http.NewRequest("GET", commitURL, nil)
+	commitReq.Header.Set("Authorization", "Bearer "+accessToken)
+
+	commitResp, err := httpClient.Do(commitReq)
+	if err != nil {
+		return CommitDetails{}, err
+	}
+	defer commitResp.Body.Close()
+
+	if commitResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(commitResp.Body)
+		return CommitDetails{}, fmt.Errorf("failed to fetch commit details: %s", string(body))
+	}
+
+	var commitDetails CommitDetails
+	if err := json.NewDecoder(commitResp.Body).Decode(&commitDetails); err != nil {
+		return CommitDetails{}, err
+	}
+
+	diffstatURL := fmt.Sprintf(cfg.DiffstatURLTemplate, "lep13", repoSlug, commitHash)
+	diffstatReq, _ := http.NewRequest("GET", diffstatURL, nil)
+	diffstatReq.Header.Set("Authorization", "Bearer "+accessToken)
+
+	diffstatResp, err := httpClient.Do(diffstatReq)
+	if err != nil {
+		return CommitDetails{}, err
+	}
+	defer diffstatResp.Body.Close()
+
+	if diffstatResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(diffstatResp.Body)
+		return CommitDetails{}, fmt.Errorf("failed to fetch diffstat: %s", string(body))
+	}
+
+	var diffstatResult struct {
+		Values []struct {
+			Type string `json:"type"`
+			Path struct {
+				To string `json:"to"`
+			} `json:"path"`
+		} `json:"values"`
+	}
+	if err := json.NewDecoder(diffstatResp.Body).Decode(&diffstatResult); err != nil {
+		return CommitDetails{}, err
+	}
+
+	commitDetails.Files = make([]struct {
+		Type string `json:"type"`
+		Path string `json:"path"`
+	}, len(diffstatResult.Values))
+	for i, file := range diffstatResult.Values {
+		commitDetails.Files[i].Type = file.Type
+		commitDetails.Files[i].Path = file.Path.To
+	}
+
+	log.Printf("Fetched detailed commit information and diffstat for commit %s", commitHash)
+	return commitDetails, nil
 }
