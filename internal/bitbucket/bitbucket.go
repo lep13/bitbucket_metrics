@@ -23,7 +23,7 @@ type HTTPClient interface {
 
 var httpClient HTTPClient = &http.Client{}
 
-var loadConfigFunc = config.LoadConfig
+// var loadConfigFunc = config.LoadConfig
 
 func init() {
 	var err error
